@@ -53,6 +53,7 @@ createApp({
     const username=ref('admin'), password=ref('123456'), err=ref(''), actionErr=ref('');
     const leftTab=ref(0), rightTab=ref(0);
     const versions=ref([]), mappings=ref([]), formal=ref([]), conflicts=ref([]);
+    const sources=ref([]), receipts=ref([]), verification=ref(null);
     const oldKey=ref('OLD-B1');
     function auth(){return {Authorization:'Bearer '+token.value,'Content-Type':'application/json'};}
     async function login(){
@@ -80,6 +81,11 @@ createApp({
       formal.value=Array.isArray(f.items)?f.items:[];
       const c=await loadJson('/api/conflicts'); if(c===null) return;
       conflicts.value=Array.isArray(c.items)?c.items:[];
+      const s=await loadJson('/api/formal-sources'); if(s===null) return;
+      sources.value=Array.isArray(s.items)?s.items:[];
+      const rc=await loadJson('/api/remap-receipts'); if(rc===null) return;
+      receipts.value=Array.isArray(rc.items)?rc.items:[];
+      verification.value=await loadJson('/api/verification');
     }
     async function doRemap(){
       actionErr.value='';
@@ -88,7 +94,7 @@ createApp({
       await refresh();
     }
     onMounted(()=>{if(token.value)refresh();});
-    return {token,user,username,password,err,actionErr,leftTab,rightTab,versions,mappings,formal,conflicts,oldKey,login,logout,doRemap};
+    return {token,user,username,password,err,actionErr,leftTab,rightTab,versions,mappings,formal,conflicts,sources,receipts,verification,oldKey,login,logout,doRemap};
   },
   template:`
   <div v-if="!token" class="login">
@@ -107,6 +113,7 @@ createApp({
         <div class="tabs">
           <button :class="{on:leftTab===0}" @click="leftTab=0">映射版本</button>
           <button :class="{on:leftTab===1}" @click="leftTab=1">执行重映</button>
+          <button :class="{on:leftTab===2}" @click="leftTab=2">折映回执</button>
         </div>
         <div class="box" v-show="leftTab===0">
           <h2>Map Versions</h2>
@@ -123,22 +130,44 @@ createApp({
           <button class="primary" @click="doRemap">重映入正式区</button>
           <div class="err">{{actionErr}}</div>
         </div>
+        <div class="box" v-show="leftTab===2">
+          <h2>Remap Receipts</h2>
+          <table><thead><tr><th>old</th><th>entity</th><th>ver</th><th>status</th><th>detail</th></tr></thead>
+          <tbody><tr v-for="r in receipts" :key="r.id"><td>{{r.old_key}}</td><td class="ok">{{r.entity_key}}</td><td>{{r.version}}</td><td>{{r.status}}</td><td>{{r.detail}}</td></tr></tbody></table>
+        </div>
       </div>
       <div class="bridge"></div>
       <div class="pane">
         <div class="tabs">
           <button :class="{on:rightTab===0}" @click="rightTab=0">正式区</button>
           <button :class="{on:rightTab===1}" @click="rightTab=1">冲突队列</button>
+          <button :class="{on:rightTab===2}" @click="rightTab=2">来源旁表</button>
+          <button :class="{on:rightTab===3}" @click="rightTab=3">互证卡</button>
         </div>
         <div class="box" v-show="rightTab===0">
-          <h2>Formal Zone</h2>
-          <table><thead><tr><th>entity</th><th>from</th><th>ver</th><th>at</th></tr></thead>
-          <tbody><tr v-for="f in formal" :key="f.id"><td class="ok">{{f.entity_key}}</td><td>{{f.mapped_from}}</td><td>{{f.version}}</td><td>{{f.created_at}}</td></tr></tbody></table>
+          <h2>Formal Zone（同新键一行）</h2>
+          <table><thead><tr><th>entity</th><th>primary</th><th>sources</th><th>ver</th><th>at</th></tr></thead>
+          <tbody><tr v-for="f in formal" :key="f.id"><td class="ok">{{f.entity_key}}</td><td>{{f.mapped_from}}</td><td><span v-for="s in f.sources" :key="s.old_key" class="pill">{{s.old_key}}</span></td><td>{{f.version}}</td><td>{{f.created_at}}</td></tr></tbody></table>
         </div>
         <div class="box" v-show="rightTab===1">
           <h2>Conflicts</h2>
           <table><thead><tr><th>old</th><th>reason</th><th>status</th></tr></thead>
           <tbody><tr v-for="c in conflicts" :key="c.id"><td class="bad">{{c.old_key}}</td><td>{{c.reason}}</td><td>{{c.status}}</td></tr></tbody></table>
+        </div>
+        <div class="box" v-show="rightTab===2">
+          <h2>Formal Sources</h2>
+          <table><thead><tr><th>entity</th><th>old</th><th>ver</th><th>at</th></tr></thead>
+          <tbody><tr v-for="s in sources" :key="s.id"><td class="ok">{{s.entity_key}}</td><td>{{s.old_key}}</td><td>{{s.version}}</td><td>{{s.created_at}}</td></tr></tbody></table>
+        </div>
+        <div class="box" v-show="rightTab===3">
+          <h2>Verification Card</h2>
+          <div v-if="verification">
+            <p :class="verification.ok?'ok':'bad'">{{verification.ok?'五处同态':'不同态'}}</p>
+            <table><thead><tr><th>check</th><th>ok</th></tr></thead>
+            <tbody><tr v-for="(v,k) in verification.checks" :key="k"><td>{{k}}</td><td :class="v?'ok':'bad'">{{v}}</td></tr></tbody></table>
+            <h2 style="margin-top:14px">Counts</h2>
+            <table><tbody><tr v-for="(v,k) in verification.counts" :key="k"><td>{{k}}</td><td>{{v}}</td></tr></tbody></table>
+          </div>
         </div>
       </div>
     </div>
